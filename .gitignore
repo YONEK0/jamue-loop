@@ -3,8 +3,7 @@ __pycache__/
 *.pyc
 assets/
 runs/
-data/*.bin
-data/*.npy
+data/
 *.pt
 *.tar.gz
 results/_smoke.*

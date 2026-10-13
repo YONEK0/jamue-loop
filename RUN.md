@@ -28,11 +28,28 @@ bash run_all.sh        # setup -> fetch 权重 -> smoke, 全自动
 - env_check 里 `sm70_in_wheel` FAIL → 装的 torch 版本 ≥2.11，必须降级；
 - smoke tier1 FAIL → 不要开训，把 `results/*.json` 推上来排查。
 
-## T+1:00（预期）训练接入点
+## T+1:00（预期）训练
 
-run_all.sh 冒烟通过后，管线就绪。训练脚本（`src/train_s1_mlm.py` 等）就绪后在此处
-替换为实际启动命令。**开训前 3 分钟做实测吞吐**：前 200 step 的 tokens/s ×
-剩余时间 = 本次 token 预算上限，宁少勿超。
+`run_all.sh` 已含合成数据全链路验证。真实数据就位后跑 350M 主线：
+
+```bash
+# S1: MLM 循环适应 (warm-start Jaume 350m-mlm), 硬时限 140 分钟
+python3 src/train_s1_mlm.py --config configs/350m_warmstart.json \
+    --warmstart assets/jaume/350m-mlm --run runs/s1_350m \
+    --sup-tokens 30000000 --max-minutes 140
+
+# 评测: CE(d) 深度曲线 + 样本级退出扫描
+python3 src/eval_depth.py --ckpt runs/s1_350m/ckpt_final.pt --data data/val.bin \
+    --out results/depth_s1_350m.json --plot results/depth_s1_350m.png
+
+# S4: 对比训练 (pairs 数据换成真实 token ids 后)
+python3 src/train_s4_contrast.py --ckpt runs/s1_350m/ckpt_final.pt \
+    --pairs data/pairs.jsonl --run runs/s4_350m --steps 2000 --max-minutes 60
+```
+
+**开训前 3 分钟做实测吞吐**：前 200 step 的 tokens/s × 剩余时间 = 本次 token 预算上限，
+宁少勿超。warmstart 首次运行必看 `runs/s1_350m/warmstart_report.json` 的 match_rate，
+低匹配说明 Jaume 键名与预设映射不符，先看 missed 列表再决定是否继续。
 
 ## 降级链（到点自动降，不犹豫）
 

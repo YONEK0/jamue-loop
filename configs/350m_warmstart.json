@@ -1,0 +1,19 @@
+{
+  "vocab": 32000,
+  "hidden": 512,
+  "n_e": 4,
+  "n_m": 12,
+  "n_d": 4,
+  "heads": 8,
+  "kv": 4,
+  "inter": 2048,
+  "n_routed": 4,
+  "top_k": 2,
+  "max_R": 8,
+  "h0_coef": 0.5,
+  "mrl_dims": [128, 256, 384, 512],
+  "bs": 16,
+  "seq": 512,
+  "seed": 42,
+  "_note": "350M warm-start 试验配置: hidden 512 与 Jaume 对齐便于权重继承; vocab 以 Jaume config.json 实际值为准 (warmstart 报告会提示)"
+}

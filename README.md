@@ -23,7 +23,13 @@ bash run_all.sh          # 环境 -> Jaume 权重 -> 冒烟, 一条命令
 | `fetch_assets.py` | ModelScope 拉 Jaume 350m 子目录权重（默认 350m-mlm） |
 | `smoke.py` | tier0 机制冒烟 + tier1 内联 mini 循环-MoE fp16 数值冒烟 |
 | `pack_and_push.sh` | 产物自动回传（幂等，可 30 分钟一次定时调用） |
-| `src/` | 模型与训练脚本（E/M/D 循环 MoE 架构，待接入 run_all） |
+| `src/arch.py` | E/M/D 循环 MoE 模型（GQA+RoPE+SwiGLU+shared/4 routed top-2+圈数条件路由） |
+| `src/train_s1_mlm.py` | S1 MLM 循环适应训练：稀疏深度监督、fp16+GradScaler、atomic rolling 存档、RNG/数据顺序恢复、硬时限、路由分化/深度价值转折点自动永久档 |
+| `src/train_s4_contrast.py` | S4 InfoNCE in-batch 对比 + Matryoshka 截断维度 |
+| `src/eval_depth.py` | CE(d) 深度曲线 + 样本级退出阈值扫描（平均有效深度） |
+| `src/warmstart.py` | Jaume 350m → 本架构权重映射（E←L0-3 / M←L4-15 / D←尾部，含匹配率报告） |
+| `src/data.py` | memmap .bin 语料 + pairs 读取 + 合成数据生成（本地管线验证用） |
+| `configs/` | 350m_warmstart.json（主线）/ local_smoke.json（秒级验证） |
 
 ## V100 事实卡
 
