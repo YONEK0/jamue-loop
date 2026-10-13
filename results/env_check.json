@@ -1,0 +1,44 @@
+[
+ {
+  "name": "gpu_model",
+  "ok": true,
+  "detail": "NVIDIA GeForce RTX 5060 Laptop GPU sm_120 mem=8.0GB",
+  "fatal": true
+ },
+ {
+  "name": "fp16_tensor_core",
+  "ok": true,
+  "detail": "fp32=2.30ms fp16=0.73ms speedup=3.2x",
+  "fatal": false
+ },
+ {
+  "name": "sdpa_flash_attention",
+  "ok": true,
+  "detail": "不可用: RuntimeError",
+  "fatal": false
+ },
+ {
+  "name": "sdpa_efficient_attention",
+  "ok": true,
+  "detail": "可用",
+  "fatal": true
+ },
+ {
+  "name": "sdpa_math",
+  "ok": true,
+  "detail": "可用",
+  "fatal": true
+ },
+ {
+  "name": "amp_fp16_gradscaler",
+  "ok": true,
+  "detail": "loss 125.093->97.662 finite=True",
+  "fatal": true
+ },
+ {
+  "name": "atomic_ckpt",
+  "ok": true,
+  "detail": "tmp+os.replace OK",
+  "fatal": true
+ }
+]

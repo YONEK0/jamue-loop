@@ -1,0 +1,9 @@
+# torch 不在此清单: 由 setup.sh 单独处理 (Volta sm70 需锁 torch==2.10.0+cu126/cu128,
+# torch>=2.11 的官方 wheel 已移除 Volta 支持)
+modelscope==1.28.4
+huggingface_hub==0.34.4
+safetensors==0.7.0
+numpy==1.26.4
+matplotlib==3.10.7
+tqdm==4.67.1
+sentencepiece==0.2.1

@@ -1,0 +1,32 @@
+[
+ {
+  "name": "tier0_atomic_ckpt",
+  "ok": true,
+  "detail": "tmp+os.replace"
+ },
+ {
+  "name": "tier0_memmap",
+  "ok": true,
+  "detail": "torch.from_file 读 packed bin"
+ },
+ {
+  "name": "tier1_loss_finite_drop",
+  "ok": true,
+  "detail": "5.177->0.961 finite=True"
+ },
+ {
+  "name": "tier1_grads_finite",
+  "ok": true,
+  "detail": "所有梯度有限"
+ },
+ {
+  "name": "tier1_expert_load_stat",
+  "ok": true,
+  "detail": "load 统计 [0.2515625059604645, 0.11562500149011612, 0.3203125, 0.3125]"
+ },
+ {
+  "name": "tier1_route_stat",
+  "ok": true,
+  "detail": "M层相邻步 overlap 信号=1.0"
+ }
+]
