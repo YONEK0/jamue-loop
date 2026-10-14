@@ -44,6 +44,7 @@ def save_ckpt(model, opt, scaler, args, st, kind, turning=None):
         "data_off": st["off"], "rng_py": random.getstate(),
         "rng_np": np.random.get_state(), "rng_torch": torch.get_rng_state(),
         "cfg": model.cfg, "args": vars(args),
+        "flags": st.get("flags", {}),
         "cuda_rng": [t.cpu() for t in torch.cuda.get_rng_state_all()] if torch.cuda.is_available() else None,
     }
     if kind == "latest":
@@ -112,10 +113,10 @@ def main():
                             weight_decay=0.1)
     scaler = torch.amp.GradScaler(dev, enabled=(dev == "cuda"))
 
-    st = {"step": 0, "sup": 0, "off": 0, "t0": time.time()}
+    st = {"step": 0, "sup": 0, "off": 0, "t0": time.time(),
+          "flags": {"routing_div": False, "depth_value": False}}
     os.makedirs(args.run, exist_ok=True)
     hist_path = os.path.join(args.run, "history.jsonl")
-    flags = {"routing_div": False, "depth_value": False}
     if args.resume:
         # 分段会话模式: 在 rolling/final/prev 中选 step 最新的档恢复
         best = None
@@ -136,12 +137,15 @@ def main():
             opt.load_state_dict(pay["opt"])
             scaler.load_state_dict(pay["scaler"])
             st.update(step=pay["step"], sup=pay["sup_tokens"], off=pay["data_off"])
+            st["flags"] = pay.get("flags") or st["flags"]  # 转折标记随 ckpt 持久化, 避免重复存盘
             random.setstate(pay["rng_py"])
             np.random.set_state(pay["rng_np"])
             torch.set_rng_state(pay["rng_torch"].cpu())  # RNG 必须是 CPU ByteTensor
             if pay.get("cuda_rng") and dev == "cuda":
                 torch.cuda.set_rng_state_all([t.cpu() for t in pay["cuda_rng"]])
-            print(f"[s1] resumed from {name} step={st['step']} sup={st['sup']/1e6:.2f}M")
+            print(f"[s1] resumed from {name} step={st['step']} sup={st['sup']/1e6:.2f}M "
+                  f"flags={st['flags']}")
+    flags = st["flags"]
 
     tokens_per_step = bs * seq
     logf = open(hist_path, "a", encoding="utf-8")

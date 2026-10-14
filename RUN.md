@@ -38,7 +38,10 @@ ckpt 纪律（防膨胀）：
 ## T+0:00 第 0 分钟（网络与回传通道验证，最优先）
 
 ```bash
-git clone <repo-url> jamue-loop && cd jamue-loop   # 若超时/断连 -> 立刻改用 gitee 镜像
+# 磁盘持久时: 先更新代码 (拿到 flags 持久化等修复)
+cd ~/jamue-loop && git pull --ff-only && cd ~
+# 磁盘被重置时: 从零 clone
+git clone <repo-url> jamue-loop && cd jamue-loop
 sed -i 's/\r$//' *.sh 2>/dev/null                   # 防 CRLF（.gitattributes 已配，双保险）
 git config user.name "runner" && git config user.email "runner@local"
 # 配回传 token（最小权限 fine-grained PAT）:
