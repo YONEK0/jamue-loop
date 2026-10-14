@@ -1,0 +1,10 @@
+[prep] docs=254545
+[prep] encoded 0/254545 docs, 1.1M tok
+[prep] encoded 40000/254545 docs, 23.1M tok
+[prep] encoded 80000/254545 docs, 44.9M tok
+[prep] encoded 120000/254545 docs, 66.8M tok
+[prep] encoded 160000/254545 docs, 88.8M tok
+[prep] encoded 200000/254545 docs, 110.8M tok
+[prep] encoded 240000/254545 docs, 132.8M tok
+[prep] total tokens: 139.60M
+[prep] train=139.40M val=200k -> data/real_*.bin (uint32)

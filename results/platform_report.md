@@ -168,3 +168,38 @@ Jaume 350m-mlm 真实权重结构与本地推断有 4 处差异，已在真实�
 1. 真实语料版 S1（数据准备：tokenize 1-2GB 真实文本 → packed bin）
 2. CE(d) 曲线在真实语料上重测（预期深度价值曲线更陡且不饱和）
 3. S4 对比训练（0.3M pairs 级）
+
+
+---
+
+# 真实语料版（session 3, 断点式）
+
+> 2026-10-14 17:00-18:1x | 持久化再次确认 | 18:29 平台强制断开, 续费后接力
+
+## 数据管线（已固化到 tools/）
+
+- 语料: hf-mirror 直连下载中文 wiki 524MB（服务器无 curl → tools/dl_corpus.py）
+- tokenize: Jaume tokenizer (vocab 151647) → **139.6M tokens, uint32 bin**
+  （关键适配: vocab 超 uint16 上限, data/eval/train 已支持 --data-dtype uint32）
+- 训练: 新 run 目录 runs/s1_real, 从 Jaume warm-start 重新开始（与合成语料版同起点,
+  用于对照两版 CE(d) 判定）
+
+## 第一段训练与判定（3.83M tokens / 45.6 min, step 934）
+
+- CE: 31.2(@0.8M) → 11.8(@2.5M) → **8.4(@3.7M)** —— 真实文本难得多, 远未收敛
+- CE(d): d1=8.611 / **d2=8.426** / d4=8.557 / d8=8.732 → best_depth=2
+- loop_delta_mean: [6.27, 1.33, 0.61, 0.41, 0.29, 0.23, 0.19, 0.16] 单调衰减（健康）
+- 样本级退出: tau=0.5 → 平均深度 4.0/8（省 50% 计算）
+
+## 诚实解读
+
+与合成语料版判定暂时一致（best_depth=2），但**两版都还处于训练早期**：
+合成版深度价值出现在 ~1.8M（且收敛 CE 1.04）；真实版收敛慢 3-5 倍，
+3.83M tokens 时 CE 仍 8.4 —— 深度价值若存在, 预计 10-20M tokens 才显现。
+**本判定不作最终结论**；续费第 2 段目标: 训至 ~10-12M tokens 后重测 CE(d)。
+
+## 续训命令（断点后）
+
+```bash
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True setsid nohup ~/miniconda3/bin/python -u   src/train_s1_mlm.py --config configs/350m_warmstart.json   --warmstart assets/jaume/350m-mlm --run runs/s1_real   --data data/real_train.bin --val data/real_val.bin --data-dtype uint32   --sup-tokens 20000000 --monitor-every 50 --save-every 100 --max-minutes 100 --bs 8 --resume   > ~/s1real2_$(date +%H%M).log 2>&1 < /dev/null &
+```

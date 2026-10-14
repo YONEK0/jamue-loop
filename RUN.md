@@ -63,7 +63,28 @@ bash run_all.sh        # setup -> fetch 权重 -> smoke, 全自动
 - env_check 里 `sm70_in_wheel` FAIL → 装的 torch 版本 ≥2.11，必须降级；
 - smoke tier1 FAIL → 不要开训，把 `results/*.json` 推上来排查。
 
-## T+1:00（预期）训练
+## 真实语料版（v2，2026-10-14 起）
+
+```bash
+# 1) 语料: hf-mirror 下载中文 wiki (524MB, ~5-10 分钟 @0.4-3.5MB/s; 服务器无 curl, 用 tools/dl_corpus.py)
+cd ~/jamue-loop && mkdir -p data/raw
+setsid nohup ~/miniconda3/bin/python tools/dl_corpus.py data/raw/wiki_cn.json > data/raw/dl.log 2>&1 < /dev/null &
+# 2) tokenize (139.6M tokens, ~1 分钟; 必须 uint32 — vocab 151647 超 uint16 上限)
+~/miniconda3/bin/python tools/prep_corpus.py --raw data/raw/wiki_cn.json --out data --val-tokens 200000
+# 3) S1-real 训练
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True setsid nohup ~/miniconda3/bin/python -u \
+  src/train_s1_mlm.py --config configs/350m_warmstart.json \
+  --warmstart assets/jaume/350m-mlm --run runs/s1_real \
+  --data data/real_train.bin --val data/real_val.bin --data-dtype uint32 \
+  --sup-tokens 20000000 --monitor-every 50 --save-every 100 --max-minutes 45 --bs 8 \
+  > ~/s1real_$(date +%H%M).log 2>&1 < /dev/null &
+# 4) 真实版深度判定
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True ~/miniconda3/bin/python -u src/eval_depth.py \
+  --ckpt runs/s1_real/ckpt_final.pt --data data/real_val.bin --data-dtype uint32 \
+  --out results/depth_s1_real.json --plot results/depth_s1_real.png --batches 16 --bs 8 --seq 512
+```
+
+## T+1:00（预期）训练（合成语料版，已完成 — 见 results/platform_report.md）
 
 `run_all.sh` 已含合成数据全链路验证。真实数据就位后跑 350M 主线。
 

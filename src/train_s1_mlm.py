@@ -87,6 +87,8 @@ def main():
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--no-ckpt", action="store_true",
                     help="关闭 M 段 gradient checkpoint (小模型调试用; 大模型默认开)")
+    ap.add_argument("--data-dtype", default="uint16", choices=["uint16", "uint32"],
+                    help="真实语料 (vocab 151647) 用 uint32")
     args = ap.parse_args()
 
     cfg = json.load(open(args.config))
@@ -106,7 +108,7 @@ def main():
         os.makedirs(args.run, exist_ok=True)
         _ = json.dump(rep, open(os.path.join(args.run, "warmstart_report.json"), "w"), indent=1)
 
-    data = BinCorpus(args.data)
+    data = BinCorpus(args.data, args.data_dtype)
     bs = args.bs or cfg.get("bs", 16)
     seq = args.seq or cfg.get("seq", 512)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, betas=(0.9, 0.95),

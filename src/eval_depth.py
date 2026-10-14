@@ -34,11 +34,12 @@ def main():
     ap.add_argument("--seq", type=int, default=512)
     ap.add_argument("--depths", default="1,2,4,8")
     ap.add_argument("--plot", default=None)
+    ap.add_argument("--data-dtype", default="uint16", choices=["uint16", "uint32"])
     args = ap.parse_args()
 
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     model = load_model(args.ckpt, dev)
-    data = BinCorpus(args.data)
+    data = BinCorpus(args.data, args.data_dtype)
     V = model.cfg["vocab"]
     depths = [int(d) for d in args.depths.split(",")]
 

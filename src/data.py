@@ -12,8 +12,10 @@ import torch
 
 
 class BinCorpus:
-    def __init__(self, path):
-        self.a = np.memmap(path, dtype=np.uint16, mode="r")
+    def __init__(self, path, dtype="uint16"):
+        # vocab 151647 > uint16 上限: 真实语料用 uint32
+        self.dtype = np.uint32 if dtype == "uint32" else np.uint16
+        self.a = np.memmap(path, dtype=self.dtype, mode="r")
         self.n = len(self.a)
 
     def batch(self, offset_tokens, bs, seq):
