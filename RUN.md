@@ -1,7 +1,11 @@
 # RUN.md — V100 实例开机操作清单（按顺序执行，每步有判定）
 
-> 硬预算：6 小时窗口。环境+冒烟目标 1 小时内完成；T+4:30 是评测回传硬截止。
-> 原则：每一步失败先走该步的 fallback，不要跳步。
+> **2 小时会话模式**（平台单次上限 2h，磁盘持久）：每次会话 = 开机清单 + 训练段 +
+> 收尾清单。推荐训练参数 `--max-minutes 105 --save-every 250`——留 15 分钟收尾缓冲，
+> 滚动档约 100 秒一存，硬杀最多丢 2 分钟。
+> 存档四层：rolling（每 save-every 步，latest/prev）→ 转折点永久档（事件触发）
+> → 会话 final 档 → resume 自动选三者中 step 最新的恢复。
+> 持久盘布局约定：仓库/venv/权重/ckpt 全放持久盘；每次会话只推小产物（jsonl/json/png）。
 
 ## T+0:00 第 0 分钟（网络与回传通道验证，最优先）
 
@@ -51,19 +55,28 @@ python3 src/train_s4_contrast.py --ckpt runs/s1_350m/ckpt_final.pt \
 宁少勿超。warmstart 首次运行必看 `runs/s1_350m/warmstart_report.json` 的 match_rate，
 低匹配说明 Jaume 键名与预设映射不符，先看 missed 列表再决定是否继续。
 
-## 降级链（到点自动降，不犹豫）
+## 会话内降级链（到点自动降，不犹豫；T = 会话开始）
 
 | 时点 | 状态 | 动作 |
 |---|---|---|
-| T+1:00 | 环境还没就绪 | 砍 C2 对照线，只跑 C3 主线 |
-| T+2:00 | 还没就绪 | 砍到单线 50M token 最低目标（跑通+路由不塌） |
-| T+4:30 | 无论训练在哪 | **停训，评测+打包+回传** |
+| T+0:30 | 环境/下载还没就绪 | 跳过 350M 真实训练，只完成管线验证 + warmstart 匹配率检测 |
+| T+1:00 | 还没就绪 | 只跑 env_check + smoke，把 platform_report 推上去，本会话定位为纯质检 |
+| T+1:45 | 无论训练在哪 | **停训（--max-minutes 105 会自动触发），评测+打包+回传** |
 
-## 结束前
+## 收尾（每次会话必做，约 5 分钟）
 
 ```bash
-bash pack_and_push.sh          # 指标/曲线全量回传
-# 大 ckpt (runs/*.pt) 手动: 网盘 或 modelscope upload
+bash pack_and_push.sh          # history.jsonl / results/* 自动 commit+push
+# 大 ckpt 只在转折档/final 时手动外传一次: 网盘或 modelscope upload
+# 平时依赖持久盘 + 下次会话 --resume 续训, 不丢进度
+```
+
+下次会话续训：
+
+```bash
+python3 src/train_s1_mlm.py --config configs/350m_warmstart.json \
+    --warmstart assets/jaume/350m-mlm --run runs/s1_350m \
+    --sup-tokens 30000000 --max-minutes 105 --save-every 250 --resume
 ```
 
 ## 环境事实卡（Tesla V100 32G）

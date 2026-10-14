@@ -115,9 +115,21 @@ def main():
     hist_path = os.path.join(args.run, "history.jsonl")
     flags = {"routing_div": False, "depth_value": False}
     if args.resume:
-        ck = os.path.join(args.run, "ckpt_latest.pt")
-        if os.path.exists(ck):
-            pay = torch.load(ck, map_location=dev, weights_only=False)
+        # 分段会话模式: 在 rolling/final/prev 中选 step 最新的档恢复
+        best = None
+        for name in ["ckpt_latest.pt", "ckpt_final.pt", "ckpt_prev.pt"]:
+            p = os.path.join(args.run, name)
+            if not os.path.exists(p):
+                continue
+            try:
+                pay = torch.load(p, map_location=dev, weights_only=False)
+            except Exception as e:
+                print(f"[s1] !! {name} 损坏跳过: {type(e).__name__}")
+                continue
+            if best is None or pay["step"] > best[1]["step"]:
+                best = (name, pay)
+        if best:
+            name, pay = best
             model.load_state_dict(pay["model"])
             opt.load_state_dict(pay["opt"])
             scaler.load_state_dict(pay["scaler"])
@@ -127,7 +139,7 @@ def main():
             torch.set_rng_state(pay["rng_torch"].cpu())  # RNG 必须是 CPU ByteTensor
             if pay.get("cuda_rng") and dev == "cuda":
                 torch.cuda.set_rng_state_all([t.cpu() for t in pay["cuda_rng"]])
-            print(f"[s1] resumed step={st['step']} sup={st['sup']/1e6:.2f}M")
+            print(f"[s1] resumed from {name} step={st['step']} sup={st['sup']/1e6:.2f}M")
 
     tokens_per_step = bs * seq
     logf = open(hist_path, "a", encoding="utf-8")
@@ -199,6 +211,7 @@ def main():
         if st["step"] % args.save_every == 0:
             _ = save_ckpt(model, opt, scaler, args, st, "latest")
 
+    _ = save_ckpt(model, opt, scaler, args, st, "latest")  # rolling 链同步到最新, 供下会话 resume
     _ = save_ckpt(model, opt, scaler, args, st, "final")
     print(f"[s1] done step={st['step']} sup={st['sup']/1e6:.2f}M "
           f"({(time.time()-st['t0'])/60:.1f} min)")
