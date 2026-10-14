@@ -6,6 +6,11 @@
 > 存档四层：rolling（每 save-every 步，latest/prev）→ 转折点永久档（事件触发）
 > → 会话 final 档 → resume 自动选三者中 step 最新的恢复。
 > 持久盘布局约定：仓库/venv/权重/ckpt 全放持久盘；每次会话只推小产物（jsonl/json/png）。
+>
+> **平台镜像选型（已定）：Ubuntu22.04 `ubuntu22_cuda12.4`**（预置 torch 2.5.0+cu124
+> 含 sm_70 → setup.sh 自动复用跳过安装；驱动 550+ 给 torch 2.10+cu126 留余量；
+> headless 无桌面件）。不选 cu118 两档（torch 2.0 老、驱动旧）。
+> Anaconda 环境装依赖一律 `python3 -m pip install ...`。
 
 ## T+0:00 第 0 分钟（网络与回传通道验证，最优先）
 
