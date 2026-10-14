@@ -28,8 +28,11 @@ def _load_sd(path):
 
 
 def _avg_expert(sd, ja_layer, comp):
-    """Jaume 某 MoE 层 4 个 expert 的某分量均值 -> dense/shared 初始化."""
-    ws = [sd.get(f"{ja_layer}.experts.{e}.{comp}") for e in range(4)]
+    """Jaume 某 MoE 层 4 个 expert 的某分量均值 -> dense/shared 初始化。
+
+    实键: backbone.layers.N.mlp.experts.{0..3}.{gate,up,down}_proj.weight
+    """
+    ws = [sd.get(f"{ja_layer}.mlp.experts.{e}.{comp}.weight") for e in range(4)]
     ws = [w for w in ws if w is not None]
     if not ws:
         return None
@@ -52,7 +55,7 @@ def load_jaume(model, path, vocab_override=None):
     if any(k.startswith("backbone.") for k in sd):
         pre = "backbone."
     lay = [k for k in sd if ".layers.0." in k or k.startswith(f"{pre}layers.0.")]
-    prefix = lay[0].split("layers.0.")[0] if lay else f"{pre}layers."
+    prefix = (lay[0].split("layers.0.")[0] + "layers.") if lay else f"{pre}layers."
     n_ja = 16
 
     report = {"jaume_keys": len(sd), "prefix": prefix, "matched": 0, "missed": []}
@@ -67,7 +70,10 @@ def load_jaume(model, path, vocab_override=None):
         return False
 
     with torch.no_grad():
-        take(f"{prefix}embed_tokens.weight", model.embed.weight)
+        # backbone 顶层: embed/norm (实键 backbone.embed_tokens.weight / backbone.norm.weight)
+        bb = prefix.rsplit("layers.", 1)[0]  # "backbone."
+        take(f"{bb}embed_tokens.weight", model.embed.weight)
+        take(f"{bb}norm.weight", model.norm.w)
         # E 段 (dense 化)
         for i, blk in enumerate(model.E):
             _take_block(blk, sd, prefix, i, report, dense_from_moe=True)
@@ -75,13 +81,28 @@ def load_jaume(model, path, vocab_override=None):
         for j, blk in enumerate(model.M):
             _take_block(blk, sd, prefix, 4 + j, report, moe=True)
         # D 段 (尾部复制)
-        n_e, n_d = len(model.E), len(model.D)
         for k, blk in enumerate(model.D):
             _take_block(blk, sd, prefix, 12 + k, report, dense_from_moe=True)
+        # head: Jaume 350m-mlm 无独立 lm_head (实键只有 backbone./pooling./projection.),
+        # 用 embed 词表权重平铺初始化 (训练会调整)
         if hasattr(model, "head"):
-            hk = f"{prefix}lm_head.weight" if f"{prefix}lm_head.weight" in sd \
-                else f"{pre}head.weight"
-            take(hk, model.head.weight)
+            hk = None
+            for cand in [f"{bb}lm_head.weight", "lm_head.weight", f"{prefix}lm_head.weight"]:
+                if cand in sd:
+                    hk = cand
+                    break
+            if hk:
+                take(hk, model.head.weight)
+            else:
+                ev = sd.get(f"{bb}embed_tokens.weight")
+                if ev is not None and tuple(ev.shape) == tuple(model.head.weight.shape):
+                    model.head.weight.data.copy_(ev.float())
+                    report["matched"] += 1
+                    report["head_init"] = "copied_from_embed"
+                else:
+                    report["head_init"] = "random"
+    report["has_pooling"] = "pooling.query" in sd
+    report["has_projection"] = any(k.startswith("projection.") for k in sd)
     if vocab_override and vocab_override != model.cfg["vocab"]:
         report["vocab_note"] = f"jaume vocab={vocab_override} != cfg {model.cfg['vocab']}: 重训 head 或改 config"
     rate = report["matched"] / max(1, report["matched"] + len(report["missed"]))
@@ -100,17 +121,16 @@ def _take_block(blk, sd, prefix, li, report, dense_from_moe=False, moe=False):
             return
         report["missed"].append(k)
 
-    take(p + "norm1.weight", blk.n1.w)
-    take(p + "input_layernorm.weight", blk.n1.w)
-    take(p + "norm2.weight", blk.n2.w)
-    take(p + "post_attention_layernorm.weight", blk.n2.w)
+    # 先探测存在性, 避免备用键名进入 missed 统计
+    take(p + ("norm1.weight" if (p + "norm1.weight") in sd else "input_layernorm.weight"), blk.n1.w)
+    take(p + ("norm2.weight" if (p + "norm2.weight") in sd else "post_attention_layernorm.weight"), blk.n2.w)
     for a, b in [("q_proj", "q"), ("k_proj", "k"), ("v_proj", "v"), ("o_proj", "o")]:
         take(p + f"self_attn.{a}.weight", getattr(blk.attn, b).weight)
 
     if moe:
         for comp in ["gate_proj", "up_proj", "down_proj"]:
             for e in range(len(blk.moe.routed)):
-                take(p + f"experts.{e}.{comp}.weight",
+                take(p + f"mlp.experts.{e}.{comp}.weight",
                      getattr(blk.moe.routed[e], {"gate_proj": "gate", "up_proj": "up",
                                                  "down_proj": "down"}[comp]).weight)
         # shared expert 用 4 个 routed expert 均值初始化 (无现成 dense 权重)
@@ -120,7 +140,8 @@ def _take_block(blk, sd, prefix, li, report, dense_from_moe=False, moe=False):
             if avg is not None and tuple(avg.shape) == tuple(dst.shape):
                 dst.data.copy_(avg)
                 report["matched"] += 1
-        take(p + "gate.weight", blk.moe.router.weight)
+        # router: 实键 mlp.gate.weight (与 expert 的 gate_proj 不同)
+        take(p + "mlp.gate.weight", blk.moe.router.weight)
     elif dense_from_moe:
         # Jaume 层是 MoE: 用 4 expert 均值给 dense FFN
         for comp, attr in [("gate_proj", "gate"), ("up_proj", "up"), ("down_proj", "down")]:

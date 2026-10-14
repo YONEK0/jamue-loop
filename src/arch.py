@@ -152,7 +152,8 @@ class LoopMoEModel(nn.Module):
     def _rope(self, T, device):
         if self._cos is None or self._cos.shape[0] < T:
             hd = self.cfg["hidden"] // self.cfg["heads"]
-            inv = 1.0 / (10000 ** (torch.arange(0, hd, 2, device=device).float() / hd))
+            base = self.cfg.get("rope_theta", 1000000.0)  # Jaume 实键 rope_theta=1e6
+            inv = 1.0 / (base ** (torch.arange(0, hd, 2, device=device).float() / hd))
             t = torch.arange(8192, device=device).float()
             fr = torch.outer(t, inv)
             self._cos, self._sin = fr.cos(), fr.sin()
