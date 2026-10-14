@@ -203,3 +203,39 @@ Jaume 350m-mlm 真实权重结构与本地推断有 4 处差异，已在真实�
 ```bash
 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True setsid nohup ~/miniconda3/bin/python -u   src/train_s1_mlm.py --config configs/350m_warmstart.json   --warmstart assets/jaume/350m-mlm --run runs/s1_real   --data data/real_train.bin --val data/real_val.bin --data-dtype uint32   --sup-tokens 20000000 --monitor-every 50 --save-every 100 --max-minutes 100 --bs 8 --resume   > ~/s1real2_$(date +%H%M).log 2>&1 < /dev/null &
 ```
+
+
+---
+
+# 真实语料正式判定（session 4, 2026-10-14 19:16-20:47, 12.29M tokens）
+
+## 核心结果: best_depth 首次移至 4 —— 深度价值在真实数据上显现
+
+| d=1 | d=2 | d=4 | d=8 |
+|---|---|---|---|
+| 6.087 | 6.021 | **5.980** | 6.146 |
+
+- **best_depth=4**（此前合成版与真实早期版均为 2），d1→d4 实质收益 0.108 CE
+- d8 开始过深（6.146）——循环深度呈"中间最优"，符合深度价值的成熟形态
+- 对照: 合成语料 17.7M tokens 时 best=2 且 d8 最差; 真实语料 12.3M tokens 时 best=4
+  → 数据多样性是关键变量; 深度价值需要多 token + 真实分布才出现
+- loop_delta_mean [3.96→0.25] 单调衰减（收敛健康）
+- 退出扫描: tau=0.5 → 平均深度 3.875/8（省 52% 计算, 且质量损失待验）
+
+## 训练轨迹（段2: 3.83M → 12.29M）
+
+- CE: 8.4(@3.8M) → 6.66(@5.7M) → 6.31(@8.8M) → **6.01(@9.8M)** → 5.98-6.1(@12.3M)
+- expert load maxmin ≤1.34 全程均衡; cross-loop overlap 0.73-0.88（多对数）
+- 收尾: SIGTERM 停在滚动档 step 3000 / 12.29M（损失 <4 分钟训练量）
+
+## 判定与下一步
+
+**架构核心主张初步成立**: 循环深度在真实数据上有实质收益（d4 > d2 > d1）。
+但 CE 仍在下降通道（6.0，合成版收敛到 1.0），best_depth 可能继续右移。
+下一步（下会话）: 续训至 20M tokens → 重测; 若 best_depth 稳定在 4-6 区间,
+进入 S4 对比训练; 若继续右移, 继续训。
+
+## 资产
+
+- runs/s1_real/ckpt_latest.pt = step 3000 / 12.29M tokens（含优化器, 可续训）
+- data/real_train.bin 139.4M tokens 仅消耗 8.8%（余量充足）
