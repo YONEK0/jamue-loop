@@ -5,12 +5,35 @@
 > 滚动档约 100 秒一存，硬杀最多丢 2 分钟。
 > 存档四层：rolling（每 save-every 步，latest/prev）→ 转折点永久档（事件触发）
 > → 会话 final 档 → resume 自动选三者中 step 最新的恢复。
-> 持久盘布局约定：仓库/venv/权重/ckpt 全放持久盘；每次会话只推小产物（jsonl/json/png）。
+> 持久盘布局约定（**单块 200G 系统盘，无数据盘**）：一切放 `~/jamue-loop`，
+> 无需挂载。容量预算表见下方"磁盘账本"。
+> 每次会话只推小产物（jsonl/json/png）。
 >
 > **平台镜像选型（已定）：Ubuntu22.04 `ubuntu22_cuda12.4`**（预置 torch 2.5.0+cu124
 > 含 sm_70 → setup.sh 自动复用跳过安装；驱动 550+ 给 torch 2.10+cu126 留余量；
 > headless 无桌面件）。不选 cu118 两档（torch 2.0 老、驱动旧）。
 > Anaconda 环境装依赖一律 `python3 -m pip install ...`。
+
+## 磁盘账本（200G 系统盘）
+
+| 项 | 占用 | 说明 |
+|---|---|---|
+| 镜像系统 + conda + 预置 torch | ~25G | 固定 |
+| 仓库 + 小依赖 | ~2G | torch 复用预置，只装 numpy/mpl 等 |
+| Jaume 权重 | ~1.5G | 350m-mlm 一个 stage |
+| 训练数据 .bin | ~1–2G | 30M token=60MB；500M token 也才 1G |
+| S1 ckpt 池 | ~23G | **每档 ~4.5G**（fp32 权重 1.5G + AdamW 动量 3G）：latest+prev+final+2 转折档 |
+| C2 对照 ckpt 池 | ~23G | 如果跑对照线 |
+| **合计** | **~75G / 200G** | 余量充足，但受 ckpt 支配 |
+
+ckpt 纪律（防膨胀）：
+- 转折点档是事件触发不会无限涨（已知 div/depth 两类），但**每次会话手动 `du -sh runs/`**
+  超过 60G 时清理 `ckpt_prev` 与已消费的中间 final；
+- S1 完成进入 S4/eval 前，把 final 档瘦身为"仅 model 权重"档（~1.5G，丢 opt 状态，
+  不再续训才允许）：
+  `python3 -c "import torch;p=torch.load('runs/s1_350m/ckpt_final.pt',map_location='cpu',weights_only=False);torch.save({'model':p['model'],'cfg':p['cfg'],'step':p['step']},'runs/s1_350m/model_only.pt')"`
+- 质检会话第一项：在 `/` 与 `~/` 各写 marker 文件，下次会话检查**哪片区域真正持久**
+  （有的平台只持久 home），确认后所有路径以实测为准。
 
 ## T+0:00 第 0 分钟（网络与回传通道验证，最优先）
 
