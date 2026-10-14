@@ -1,0 +1,10 @@
+{
+ "jaume_keys": 310,
+ "prefix": "backbone.layers.",
+ "matched": 339,
+ "missed": [],
+ "head_init": "copied_from_embed",
+ "has_pooling": true,
+ "has_projection": true,
+ "match_rate": 1.0
+}

@@ -62,26 +62,35 @@ bash run_all.sh        # setup -> fetch 权重 -> smoke, 全自动
 
 ## T+1:00（预期）训练
 
-`run_all.sh` 已含合成数据全链路验证。真实数据就位后跑 350M 主线：
+`run_all.sh` 已含合成数据全链路验证。真实数据就位后跑 350M 主线。
 
+**实测锚定（2026-10-14 质检会话，必须遵守）**：
+- 环境非预置：用 `/root/Miniconda3-*.sh` 离线装 + pip torch 2.10.0+cu126（29 分钟）；
+- **bs16 必 OOM，固定 `--bs 8` + `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`**；
+- 实测吞吐 1422 tok/s（2.88 s/step @ bs8）→ 30M sup-tokens ≈ 5.9h ≈ 3 个会话；
+- 启动命令（唯一发布一次，超时先 pgrep 再决定）：
 ```bash
-# S1: MLM 循环适应 (warm-start Jaume 350m-mlm), 硬时限 140 分钟
-python3 src/train_s1_mlm.py --config configs/350m_warmstart.json \
-    --warmstart assets/jaume/350m-mlm --run runs/s1_350m \
-    --sup-tokens 30000000 --max-minutes 140
+cd ~/jamue-loop
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True nohup ~/miniconda3/bin/python -u \
+  src/train_s1_mlm.py --config configs/350m_warmstart.json \
+  --warmstart assets/jaume/350m-mlm --run runs/s1_350m \
+  --sup-tokens 30000000 --monitor-every 50 --save-every 150 \
+  --max-minutes 105 --bs 8 > ~/s1_$(date +%H%M).log 2>&1 &
+sleep 20; pgrep -fc '[t]rain_s1_mlm'   # 必须 ≥1, 否则看日志
+```
 
-# 评测: CE(d) 深度曲线 + 样本级退出扫描
-python3 src/eval_depth.py --ckpt runs/s1_350m/ckpt_final.pt --data data/val.bin \
-    --out results/depth_s1_350m.json --plot results/depth_s1_350m.png
-
-# S4: 对比训练 (pairs 数据换成真实 token ids 后)
-python3 src/train_s4_contrast.py --ckpt runs/s1_350m/ckpt_final.pt \
-    --pairs data/pairs.jsonl --run runs/s4_350m --steps 2000 --max-minutes 60
+续训（ckpt_latest 已在 step 200 / 0.82M，直接 --resume 接力）：
+```bash
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True nohup ~/miniconda3/bin/python -u \
+  src/train_s1_mlm.py --config configs/350m_warmstart.json \
+  --warmstart assets/jaume/350m-mlm --run runs/s1_350m \
+  --sup-tokens 30000000 --monitor-every 50 --save-every 150 \
+  --max-minutes 105 --bs 8 --resume > ~/s1_$(date +%H%M).log 2>&1 &
 ```
 
 **开训前 3 分钟做实测吞吐**：前 200 step 的 tokens/s × 剩余时间 = 本次 token 预算上限，
-宁少勿超。warmstart 首次运行必看 `runs/s1_350m/warmstart_report.json` 的 match_rate，
-低匹配说明 Jaume 键名与预设映射不符，先看 missed 列表再决定是否继续。
+宁少勿超。warmstart 首次运行必看 `runs/s1_350m/warmstart_report.json` 的 match_rate
+（质检会话实测 **1.0 / 零缺失**，此风险已消除）。
 
 ## 会话内降级链（到点自动降，不犹豫；T = 会话开始）
 
@@ -99,18 +108,21 @@ bash pack_and_push.sh          # history.jsonl / results/* 自动 commit+push
 # 平时依赖持久盘 + 下次会话 --resume 续训, 不丢进度
 ```
 
-下次会话续训：
+下次会话续训（命令见上方 T+1:00 节，固定 `--bs 8 --resume`）：
+**会话开始第 2 件事**（第 1 件是验证回传通道）：检查持久化 marker —
+`ls /marker_jl.txt ~/marker_jl.txt` 与 `runs/s1_350m/ckpt_latest.pt` 是否存在，
+以实测结果决定本会话是"直接续训"还是"重装环境"。
 
-```bash
-python3 src/train_s1_mlm.py --config configs/350m_warmstart.json \
-    --warmstart assets/jaume/350m-mlm --run runs/s1_350m \
-    --sup-tokens 30000000 --max-minutes 105 --save-every 250 --resume
-```
-
-## 环境事实卡（Tesla V100 32G）
+## 环境事实卡（Tesla V100 32G，质检会话实测锚定）
 
 - sm_70 架构：**torch ≤ 2.10.0（cu126/cu128 是最后支持线）**，2.11+ 官方 wheel 无 Volta；
-- **无 bf16**：所有训练代码走 fp16 + `torch.amp.GradScaler`，router/softmax/norm 转 fp32；
-- flash-attention 不可装（需 sm80+）：SDPA 用 memory-efficient 或 math 后端，
-  env_check 会自动探测报告；
-- 显存 32G：350M 全参 + AdamW ≈ 10GB，充裕，优先加大 micro-batch。
+- 镜像（ubuntu22_cuda12.4）实际无预置 torch → 用 `/root` 的 Miniconda 安装器离线装：
+  `bash ~/Miniconda3-py312_24.9.2-0-Linux-x86_64.sh -b -p ~/miniconda3`；
+- torch 下载慢/停滞时：`/tmp/pip-unpack-*/*.whl` 里完整 wheel 直接用
+  `pip install --no-deps <whls>` + triton 走清华源；apt 源已过期（404）不可用；
+- **无 bf16**：fp16 + GradScaler，router/softmax/norm 全 fp32（代码已内置）；
+- flash-attention 不可装；SDPA efficient/math 后端可用；
+- **显存红线**：bs8 + gradient checkpoint = 24.4GB 稳定；bs16 OOM。
+  151647 词表的 CE fp32 计算是大头之一（bs8 约 2.5GB）；
+- 磁盘：196G 系统盘，一次 S1 档约 4.6GB；`/root` 与 `/` 为同一分区且**持久**（待下会话
+  以 marker 文件最终确认）。

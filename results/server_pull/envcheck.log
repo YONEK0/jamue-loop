@@ -1,0 +1,24 @@
+/root/jamue-loop/env_check.py:118: UserWarning: Memory efficient kernel not used because: (Triggered internally at /pytorch/aten/src/ATen/native/transformers/cuda/sdp_utils.cpp:960.)
+  o = F.scaled_dot_product_attention(q, k, v)
+/root/jamue-loop/env_check.py:118: UserWarning: Memory Efficient attention has been runtime disabled. (Triggered internally at /pytorch/aten/src/ATen/native/transformers/sdp_utils_cpp.h:552.)
+  o = F.scaled_dot_product_attention(q, k, v)
+/root/jamue-loop/env_check.py:118: UserWarning: Flash attention kernel not used because: (Triggered internally at /pytorch/aten/src/ATen/native/transformers/cuda/sdp_utils.cpp:962.)
+  o = F.scaled_dot_product_attention(q, k, v)
+/root/jamue-loop/env_check.py:118: UserWarning: Flash attention only supports gpu architectures in the range [sm80, sm121]. Attempting to run on a sm 7.0 gpu. (Triggered internally at /pytorch/aten/src/ATen/native/transformers/cuda/sdp_utils.cpp:339.)
+  o = F.scaled_dot_product_attention(q, k, v)
+/root/jamue-loop/env_check.py:118: UserWarning: cuDNN attention kernel not used because: (Triggered internally at /pytorch/aten/src/ATen/native/transformers/cuda/sdp_utils.cpp:964.)
+  o = F.scaled_dot_product_attention(q, k, v)
+/root/jamue-loop/env_check.py:118: UserWarning: cuDNN attention has been runtime disabled. (Triggered internally at /pytorch/aten/src/ATen/native/transformers/cuda/sdp_utils.cpp:680.)
+  o = F.scaled_dot_product_attention(q, k, v)
+torch=2.10.0+cu126 cuda_build=12.6
+[PASS] gpu_model: Tesla V100-SXM2-32GB sm_70 mem=31.7GB
+[PASS] sm70_in_wheel: archs=['sm_50', 'sm_60', 'sm_70', 'sm_75', 'sm_80', 'sm_86', 'sm_90']
+[PASS] no_bf16_on_volta: Volta 无 bf16: 训练代码必须走 fp16+GradScaler 路径
+[PASS] fp16_tensor_core: fp32=1.39ms fp16=0.25ms speedup=5.6x
+[PASS] sdpa_flash_attention: 不可用: RuntimeError
+[PASS] sdpa_efficient_attention: 可用
+[PASS] sdpa_math: 可用
+[PASS] amp_fp16_gradscaler: loss 125.093->97.662 finite=True
+[PASS] atomic_ckpt: tmp+os.replace OK
+
+== env_check: 9/9 通过, 致命失败 0 ==

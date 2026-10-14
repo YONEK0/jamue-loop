@@ -129,6 +129,12 @@ class Block(nn.Module):
             self.aux = None
         return x
 
+    def forward_aux(self, x, cos, sin, depth):
+        """供 gradient checkpoint 使用的版本: aux 显式返回 (checkpoint 输出语义安全)."""
+        x = x + self.attn(self.n1(x), cos, sin)
+        y, bal, zl = self.moe(self.n2(x), depth)
+        return x + y, bal, zl
+
 
 class LoopMoEModel(nn.Module):
     def __init__(self, cfg):
@@ -159,8 +165,12 @@ class LoopMoEModel(nn.Module):
             self._cos, self._sin = fr.cos(), fr.sin()
         return self._cos[:T], self._sin[:T]
 
-    def encode(self, ids, R, collect=None):
-        """返回 M 段末端的逐圈 hidden 列表 (collect=True 时) 与最终 hidden."""
+    def encode(self, ids, R, collect=None, ckpt=False):
+        """返回 M 段末端的逐圈 hidden 列表 (collect=True 时) 与最终 hidden.
+
+        ckpt=True: M 段每 block-pass 走 gradient checkpoint (重算换激活内存,
+        训练 OOM 的主对策; 监控 collect 路径不经过 checkpoint).
+        """
         x = self.embed(ids)
         cos, sin = self._rope(ids.shape[1], ids.device)
         for b in self.E:
@@ -168,24 +178,31 @@ class LoopMoEModel(nn.Module):
         h0 = x
         per_loop = collect is not None
         hs = [x] if per_loop else None
+        self._aux = []
         for d in range(R):
             if d > 0:
                 x = x + self.h0_coef * h0            # 第 2 圈起 h0 再注入
             for b in self.M:
-                x = b(x, cos, sin, depth=d, collect=collect)
+                if ckpt:
+                    x, bal, zl = torch.utils.checkpoint.checkpoint(
+                        b.forward_aux, x, cos, sin, d, use_reentrant=False)
+                    self._aux.append((bal, zl))
+                else:
+                    x = b(x, cos, sin, depth=d, collect=collect)
+                    if b.aux is not None:
+                        self._aux.append(b.aux)
             if per_loop:
                 hs.append(x)
         for b in self.D:
             x = b(x, cos, sin)
         return (x, hs) if per_loop else (x, None)
 
-    def forward(self, ids, R):
-        x, _ = self.encode(ids, R)
+    def forward(self, ids, R, ckpt=False):
+        x, _ = self.encode(ids, R, ckpt=ckpt)
         return self.head(self.norm(x))
 
     def aux_losses(self):
-        bal = x = 0.0
-        items = [b.aux for b in self.M if b.aux is not None]
+        items = getattr(self, "_aux", None)
         if not items:
             return None
         bal = torch.stack([a[0] for a in items]).mean()

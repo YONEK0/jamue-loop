@@ -84,6 +84,8 @@ def main():
     ap.add_argument("--monitor-every", type=int, default=100)
     ap.add_argument("--save-every", type=int, default=500)
     ap.add_argument("--resume", action="store_true")
+    ap.add_argument("--no-ckpt", action="store_true",
+                    help="关闭 M 段 gradient checkpoint (小模型调试用; 大模型默认开)")
     args = ap.parse_args()
 
     cfg = json.load(open(args.config))
@@ -154,7 +156,7 @@ def main():
         for d in depths:
             mi, labels = mlm_mask(x, cfg["vocab"])
             with torch.autocast(dev, dtype=torch.float16, enabled=(dev == "cuda")):
-                logits = model(mi, R=d)
+                logits = model(mi, R=d, ckpt=not args.no_ckpt)
                 ce = torch.nn.functional.cross_entropy(
                     logits.view(-1, cfg["vocab"]).float(), labels.view(-1),
                     ignore_index=-100)
@@ -203,11 +205,12 @@ def main():
                 flags["routing_div"] = True
                 _ = save_ckpt(model, opt, scaler, args, st, "latest", "div")
                 print("[s1] 转折点: 路由分化首现 -> 永久档")
-            if not flags["depth_value"] and len(depths) == 2 and \
-                    min(depths) == 1 and max(depths) == 8 and ces[1] < ces[0]:
-                flags["depth_value"] = True
-                _ = save_ckpt(model, opt, scaler, args, st, "latest", "depth")
-                print("[s1] 转折点: 深度价值首现 (CE8<CE1) -> 永久档")
+            if not flags["depth_value"] and {1, 8}.issubset(depths):
+                ce_d = dict(zip(depths, ces))
+                if ce_d[8] < ce_d[1]:  # 按深度取值比较, 不用采样顺序
+                    flags["depth_value"] = True
+                    _ = save_ckpt(model, opt, scaler, args, st, "latest", "depth")
+                    print("[s1] 转折点: 深度价值首现 (CE8<CE1) -> 永久档")
         if st["step"] % args.save_every == 0:
             _ = save_ckpt(model, opt, scaler, args, st, "latest")
 
